@@ -1,0 +1,73 @@
+<html>
+    <head>
+        <title>Content of {{dir}}</title>
+        <style>
+            body {
+                margin: 0;
+                padding: 0;
+                font-family: Arial, Helvetica, sans-serif;
+            }
+
+            .container {
+                display: flex;
+                flex-direction: column;
+                align-self: center;
+                width: 100%;
+                overflow: hidden;
+            }
+
+            .nav {
+                background: #666;
+                padding: 18px;
+                display: inline-block;
+                color: #fff;
+                display: flex;
+                font-size: 22px;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+            .path {
+                margin-left: 16px;
+            }
+
+            ul {
+                padding: 0;
+                list-style-type: none;
+            }
+            li {
+                margin-bottom: 5px;
+                padding-left: 14px;
+                display: flex;
+                flex-direction: row;
+                align-items: center;
+                transition: all 0.1s cubic-bezier(0.47, 0, 0.745, 0.715);
+            }
+            li:hover {
+                background-color: #DDD;
+            }
+            li img {
+                margin-left: 10px;
+                width: 20px;
+                height: 20px;
+            }
+            a {
+                display: flexbox;
+                width: 100%;
+                padding: 10px;
+                color: #000;
+                text-decoration: none;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="nav">
+                Content of <span class="path">{{dir}}</span>
+            </div>
+            <ul>
+                {{content}}
+            </ul>
+        </div>
+    </body>
+</html>
