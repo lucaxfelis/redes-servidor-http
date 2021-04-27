@@ -34,7 +34,15 @@ class WebServer(object):
             ".jpg":  "image/jpeg",
             ".pdf": "application/pdf"
         }
-        print(f"------- SERVIDOR WEB HTTP {self.host}:{self.port} -------\n")
+        self.icons = {
+            'green': "\033[37;42m # \033[00m",
+            'error': "\n\033[37;41m ERRO: \033[00m",
+            'yellow': "\n\033[37;43m # \033[00m"
+            }
+
+        bar = " # # # # # # "
+        title = f"\n\033[30;47m{bar} SERVIDOR WEB HTTP {self.host}:{self.port} {bar}\033[00m"
+        print(title)
 
     def start(self):
         """
@@ -47,16 +55,16 @@ class WebServer(object):
         self.socket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
         
         if not os.path.isdir(self.content_dir):
-            print("# Criando diretório principal './web'.\n")
+            print(f"{self.icons['green']} Criando diretório principal './web'.\n")
             os.mkdir(self.content_dir)
 
         try:
-            print(f"# Iniciando o servidor em {self.host}:{self.port}... ")
+            print(f"\n{self.icons['green']} Iniciando o servidor em {self.host}:{self.port}... ")
             self.socket.bind((self.host, self.port))
-            print(f"# Servidor iniciado na porta {self.port}. \n")
+            print(f"{self.icons['green']} Servidor iniciado na porta {self.port}.")
 
         except Exception as e:
-            print(f"ERRO: Não foi possível ligar a porta {self.port}!")
+            print(f"{self.icons['error']} Não foi possível ligar a porta {self.port}!")
             self.shutdown()
             sys.exit(1)
 
@@ -65,7 +73,7 @@ class WebServer(object):
     def shutdown(self):
         """Desliga o servidor"""
         try:
-            print("\r# Desligando o servidor.\n")
+            print(f"\r{self.icons['green']} Desligando o servidor.\n")
             self.socket.shutdown(SHUT_RDWR)
 
         except Exception as e:
@@ -115,7 +123,7 @@ class WebServer(object):
             (client, address) = self.socket.accept()
             client_host, client_port = address
             client.settimeout(60)
-            print(f"Recebendo conexão de {client_host}:{client_port}")
+            print(f"{self.icons['yellow']} Recebendo conexão de {client_host}:{client_port}")
             threading.Thread(target=self._handle_client, args=(client, address)).start()
 
     def _get_request_line(self, data):
@@ -140,12 +148,11 @@ class WebServer(object):
         Retorna uma página de erro pré-estabelecida pelo servidor   
         """
         file_path = {
-            400: "./error_pages/bad_request.html",
-            404: "./error_pages/not_found.html",
-            501: "./error_pages/not_implemented.html",
-            505: "./error_pages/http_version_not_supported.html"
+            400: "./info_pages/bad_request.html",
+            404: "./info_pages/not_found.html",
+            501: "./info_pages/not_implemented.html",
+            505: "./info_pages/http_version_not_supported.html"
         }
-
         content = ''
         with open(file_path[code], 'r', encoding='utf-8') as file:
             content += "\r\n".join(file.readlines())
@@ -159,6 +166,62 @@ class WebServer(object):
         elif method == "HEAD":
             socket.send((header).encode())
             socket.close()
+        else:
+            socket.send((header + content).encode())
+            socket.close()
+
+    def _retrieve_nav_page(self, socket, method, path, uri, target):
+        """
+        Retorna uma página de navegação que mostra os elementos contidos
+        no diretório especificado
+
+        Parâmetros:
+            - socket: socket pelo qual será enviado a resposta
+            - path: caminho do diretório  
+        """
+
+        content = ''
+
+        def join_path(p, t):
+            p = p.replace(self.content_dir, '')
+            r = p + "/" + t
+            return r.replace('//', '/')
+
+        def back_path(p):
+            p = p.replace(self.content_dir, '')
+            return p.split('/')[0]
+
+        with open("./info_pages/nav_page.html", 'r', encoding="utf-8") as file:
+            content += "\r\n".join(file.readlines())
+
+        print(path)   
+        _, dirs, files = next(iter(os.walk(target)))
+        list_items = (
+            [(back_path(path), "..", "folder" ,) ]
+            + [(join_path(path, d), d, "folder") for d in dirs]
+            + [(join_path(path, f), f, "file") for f in files]
+        )
+
+        result = ""
+
+        for url, name, img_type in list_items:
+            result += f'<li><img src="./img/{img_type}.png"><a href="{url}">{name}</a></li>\n'
+
+        args = {
+            "{{dir}}": uri,
+            "{{content}}": result
+        }
+
+        for k, v in args.items():
+            content = content.replace(k, v)
+
+        content_length = len(content)
+        header = self._generate_headers(200, "text/html", content_length)
+
+        if method == "GET":
+            socket.send((header + content).encode())
+        elif method == "HEAD":
+            socket.send((header).encode())
 
     def _is_binary_file(self, path):
         """
@@ -175,9 +238,12 @@ class WebServer(object):
             return True
 
     def _extract_type(self, path):
-        s = re.search(r".*(\.[a-z0-9]*)/{0,1}$", path)
-        c_type = s.group(1)
-        return self.CONTENT_TYPES[c_type] if c_type in self.CONTENT_TYPES else "text/plain"
+        try:
+            s = re.search(r".*(\.[a-z0-9]*)/{0,1}$", path)
+            c_type = s.group(1)
+            return self.CONTENT_TYPES[c_type] if c_type in self.CONTENT_TYPES else "text/plain"
+        except:
+            return "text/plain"
 
     def _retrieve_plain_file(self, socket, method, path, replaces=None):
         """Retorna um arquivo de texto plano."""
@@ -192,10 +258,8 @@ class WebServer(object):
 
         if method == "GET":
             socket.send((header + content).encode())
-            socket.close()
         elif method == "HEAD":
             socket.send((header).encode())
-            socket.close()
     
     def _retrieve_binary_file(self, socket, method, path):
         """Retorna um arquivo binário"""
@@ -229,45 +293,45 @@ class WebServer(object):
             - address: socket address from accept()
         """
         PACKET_SIZE = 2048
-        while True:
-            print("\nConectado")
+        try:
             data = client.recv(PACKET_SIZE).decode() # Recieve data packet from client and decode
 
             # Se a requisição é vazia
             if not data: 
-                break
+                self._retrieve_error_page(client, "GET", 400)
+                
 
             # Realiza o processo na requisição
             try:
                 method, uri, version = self._get_request_line(data)
-                print(f"{method} {uri} {version}\n")
+                print(f"REQUEST: {method} {uri} {version}")
             # Se há erro de sintaxe, enviar a página 400 Bad Request
             except:
                 self._retrieve_error_page(client, "GET", 400)
-                return
-
+                
             # Se o método enviado não está implementado
             if not (method == "GET" or method == "HEAD"):
                 # Envia página 501 Not Implemented
                 self._retrieve_error_page(client, method, 501)
-                return
-
+                
+            # Buscar imagens da página de navegação
+            elif uri.startswith("/img"):
+                uri = "." + uri
+                self._retrieve_binary_file(client, method, uri)
+                
             # Requisição com erro de sintaxe
             elif not uri.startswith("/"):
                 # Envia página 400 Bad Request
                 self._retrieve_error_page(client, method, 400)
-                return
-
+                
             # Requisição com versão de HTTP incompatível
             elif not (version == "HTTP/1.1" or version == "HTTP/1.0"):
                 # Envia página 505 HTTP Version Not Supported
                 self._retrieve_error_page(client, method, 505)
-                return
-            
+                        
             # Caso não haja erro na requisição
             else:
-                
-                 
+                      
                 if uri != "/" and uri.endswith("/"):
                     uri = uri[0:-1]
 
@@ -287,7 +351,7 @@ class WebServer(object):
                                 method, 
                                 dir_path + "/index.html"
                                 )
-                            return
+                            
                         
                         # Contém o arquivo index.htm
                         elif os.path.isfile(dir_path + "/index.htm"):
@@ -296,12 +360,12 @@ class WebServer(object):
                                 method,
                                 dir_path + "/index.htm"
                                 )
-                            return
+                            
                         
                         # Exibe a página de navegação
                         else:
-                            self._retrieve_nav_page(client, dir_path)
-                            return
+                            self._retrieve_nav_page(client, method, dir_path, uri, target)
+                            
                     
                     # Se o caminho é um arquivo
                     elif os.path.isfile(target):
@@ -314,6 +378,7 @@ class WebServer(object):
 
                 else:
                     self._retrieve_error_page(client, method, 404)
-                    return
 
-                break
+            client.close()
+        except:
+            client.close()
